@@ -1,10 +1,50 @@
 #ifndef AUTOPRINTER_H
 #define AUTOPRINTER_H
 
-#include <QtGui/QMainWindow>
+#include <QtGui>
 #include "ui_autoprinter.h"
 
-class CombineImageMaskReview;
+//=========================================================================
+class CombineImageMaskReview : public QWidget
+{
+	Q_OBJECT
+public:
+	CombineImageMaskReview(const QString &strImage);
+
+	QSize GetTemplateImageSize() const;
+	void SetMaskPosX(int posX);
+	void SetMaskPosY(int posY);
+	void SetMaskSize(const QSize &size);
+
+protected:
+	virtual void paintEvent(QPaintEvent *event);
+
+private:
+	QImage m_imgTemplate;
+	int m_nPosX;
+	int m_nPosY;
+	QSize m_sizeMask;
+};
+//=========================================================================
+class DirectoryMonitor : public QThread
+{
+	Q_OBJECT
+public:
+	DirectoryMonitor(const QString &strDir);
+	~DirectoryMonitor();
+
+	virtual void run();
+	void Stop();
+
+signals:
+	void directoryChange();
+
+private:
+	QString m_strDir;
+	bool m_bMonitor;
+};
+
+//=========================================================================
 class AutoPrinter : public QMainWindow
 {
 	Q_OBJECT
@@ -35,9 +75,18 @@ private slots:
 	void OnSelectOutputDir();
 	void OnSelectTemplatePath();
 
-	// Template preview mask positon slider.
+	// Template preview mask position slider.
 	void OnPosHorizontalChange();
 	void OnPosVerticalChange();
+
+	// Mask width(height), Mask Coordinate.
+	void OnMaskHeightChange(int val);
+	void OnMaskWidthChange(int val);
+	void OnMaskCoordChangeX();
+	void OnMaskCoordChangeY();
+
+	// Thread relatives.
+	void OnMonitorDirChange();
 
 private:
 	Ui::AutoPrinterClass ui;
@@ -47,11 +96,14 @@ private:
 	QString m_strScanDir;
 	QString m_strBackupDir;
 	QString m_strOutputDir;
+
+	QStringList m_listPndinProcFiles;
 	
 	QPoint m_FgImgPos; // Foreground Image Position
 	QSize m_FgMaskSize; // Foreground Image Size
 
 	CombineImageMaskReview* m_pMaskReviewWidget;
+	DirectoryMonitor* m_pThreadMonitor;
 };
 
 #endif // AUTOPRINTER_H
