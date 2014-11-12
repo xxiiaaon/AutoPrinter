@@ -1,8 +1,11 @@
 #ifndef AUTOPRINTER_H
 #define AUTOPRINTER_H
 
-#include <QtGui>
 #include "ui_autoprinter.h"
+
+#include <windows.h>
+#include <QtGui>
+#include <QSettings>
 
 //=========================================================================
 class CombineImageMaskReview : public QWidget
@@ -26,12 +29,12 @@ private:
 	QSize m_sizeMask;
 };
 //=========================================================================
-class DirectoryMonitor : public QThread
+class DirectoryMonitorThread : public QThread
 {
 	Q_OBJECT
 public:
-	DirectoryMonitor(const QString &strDir);
-	~DirectoryMonitor();
+	DirectoryMonitorThread(const QString &strDir);
+	~DirectoryMonitorThread();
 
 	virtual void run();
 	void Stop();
@@ -40,12 +43,35 @@ signals:
 	void directoryChange();
 
 private:
-	QString m_strDir;
-	bool m_bMonitor;
+	bool m_bRun;
+	QString m_strMonDir;
+	HANDLE m_hMonDir;
 };
 
 //=========================================================================
-class AutoPrinter : public QMainWindow
+class PhotoCombiner
+{
+public:
+	virtual void CombineImage(const QString &strInputImage) = 0;
+};
+
+//=========================================================================
+class PhotoCombineThread : public QThread
+{
+	Q_OBJECT
+public:
+	PhotoCombineThread(PhotoCombiner* pPhotoCombiner);
+	virtual void run();
+
+private:
+	bool m_bRun;
+	PhotoCombiner* m_pPhotoCombiner;
+};
+
+//=========================================================================
+class AutoPrinter 
+	: public QMainWindow
+	, public PhotoCombiner
 {
 	Q_OBJECT
 
@@ -53,15 +79,17 @@ public:
 	AutoPrinter(QWidget *parent = 0, Qt::WFlags flags = 0);
 	~AutoPrinter();
 
+	virtual void CombineImage(const QString &strInputImage);
+
 protected:
 	virtual void paintEvent(QPaintEvent *event);
 
 private:
-	void CombineImage(const QString &strInputFile, const QString &strTemplateFile);
 	void SaveSettings();
 
 	// Tab initial functions.
 	void InitTemplatePreview();
+	void InitPrinterSelect();
 
 private slots:
 	// Main functions.
@@ -88,22 +116,26 @@ private slots:
 	// Thread relatives.
 	void OnMonitorDirChange();
 
+	// Tab initial.
+	void OnCurrentChanged(int nIndex);
+
 private:
 	Ui::AutoPrinterClass ui;
 
-	QString m_strTemplateFile;
+	QString m_strTmptFilePath;
 	QString m_strInputFile;
 	QString m_strScanDir;
 	QString m_strBackupDir;
 	QString m_strOutputDir;
 
-	QStringList m_listPndinProcFiles;
-	
 	QPoint m_FgImgPos; // Foreground Image Position
 	QSize m_FgMaskSize; // Foreground Image Size
 
 	CombineImageMaskReview* m_pMaskReviewWidget;
-	DirectoryMonitor* m_pThreadMonitor;
+	DirectoryMonitorThread* m_pThreadMonitor;
+	PhotoCombineThread*		m_pThreadCombine;
+
+	QSettings* m_pSettings;
 };
 
 #endif // AUTOPRINTER_H
