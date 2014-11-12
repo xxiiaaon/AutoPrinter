@@ -8,27 +8,6 @@
 #include <QSettings>
 
 //=========================================================================
-class CombineImageMaskReview : public QWidget
-{
-	Q_OBJECT
-public:
-	CombineImageMaskReview(const QString &strImage);
-
-	QSize GetTemplateImageSize() const;
-	void SetMaskPosX(int posX);
-	void SetMaskPosY(int posY);
-	void SetMaskSize(const QSize &size);
-
-protected:
-	virtual void paintEvent(QPaintEvent *event);
-
-private:
-	QImage m_imgTemplate;
-	int m_nPosX;
-	int m_nPosY;
-	QSize m_sizeMask;
-};
-//=========================================================================
 class DirectoryMonitorThread : public QThread
 {
 	Q_OBJECT
@@ -88,11 +67,11 @@ private:
 };
 
 //=========================================================================
-class OuputDisplayWidget : public QWidget
+class AutoScaledDisplayWidget : public QWidget
 {
 	Q_OBJECT
 public:
-	OuputDisplayWidget(QWidget *parent = 0);
+	AutoScaledDisplayWidget(QWidget *parent = 0);
 	void SetDisplayImage(const QImage &image);
 
 	virtual void paintEvent(QPaintEvent *event);
@@ -121,6 +100,9 @@ protected:
 
 private:
 	void SaveSettings();
+	QImage GetFramePreviewImage();
+	void UpdateMaskConfigRange();
+	void InitialPrinter();
 
 	// Tab initial functions.
 	void InitTemplatePreviewTab();
@@ -143,15 +125,15 @@ private slots:
 	void OnSelectOutputDir();
 	void OnSelectTemplatePath();
 
-	// Template preview mask position slider.
-	void OnPosHorizontalChange();
-	void OnPosVerticalChange();
-
 	// Mask width(height), Mask Coordinate.
-	void OnMaskHeightChange(int val);
 	void OnMaskWidthChange(int val);
-	void OnMaskCoordChangeX();
-	void OnMaskCoordChangeY();
+	void OnMaskHeightChange(int val);
+	void OnMaskHeightChangeSB(int val);
+	void OnMaskWidthChangeSB(int val);
+	void OnMaskCoordChangeX(int val);
+	void OnMaskCoordChangeY(int val);
+	void OnMaskCoordChangeXSB(int val); // For spinbox.
+	void OnMaskCoordChangeYSB(int val); // For spinbox.
 
 	// Thread relatives.
 	void OnMonitorDirChange();
@@ -173,15 +155,19 @@ private:
 	QString m_strBackupDir;
 	QString m_strOutputDir;
 
-	QPoint m_FgImgPos; // Foreground Image Position
-	QSize m_FgMaskSize; // Foreground Image Size
+	QPoint	m_FgMaskPos; // Foreground Image Position
+	QSize	m_FgMaskSize; // Foreground Image Size
 
-	CombineImageMaskReview* m_pMaskReviewWidget;
+	AutoScaledDisplayWidget* m_pMaskReviewWidget;
+	AutoScaledDisplayWidget* m_pOutputDispWidget;
+
 	DirectoryMonitorThread* m_pThreadMonitor;
 	PhotoCombineThread*		m_pThreadCombine;
 	PrinterThread*			m_pThreadPrint;
 
-	QSettings* m_pSettings;
+	QSettings*	m_pSettings;
+	QImage		m_imgTemplate;
+	QPrinter*	m_pPrinter;
 };
 
 #endif // AUTOPRINTER_H

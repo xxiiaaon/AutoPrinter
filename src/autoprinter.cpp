@@ -2,10 +2,12 @@
 #include <QtGui>
 
 //====================================================================================
-#define SETTING_TEMPLATEFILE	"TemplateFile"
-#define SETTING_SCANPATH		"ScanPath"
-#define SETTING_OUTPUTPATH		"OutputPath"
-#define SETTING_BACKUPPATH		"BackupPath"
+#define SETTING_TEMPLATEFILE		"TemplateFile"
+#define SETTING_SCANPATH			"ScanPath"
+#define SETTING_OUTPUTPATH			"OutputPath"
+#define SETTING_BACKUPPATH			"BackupPath"
+#define SETTING_CONFIG_MASK_COORD	"MaskCoord"
+#define SETTING_CONFIG_MASK_SIZE	"MaskSize"
 
 #define TAB_INDEX_MAIN		0
 #define TAB_INDEX_FRAME		1
@@ -23,53 +25,6 @@ QMutex g_mtxFileArrived;
 
 QWaitCondition g_conPndinPrint;
 QMutex g_mtxPndinPrint;
-
-//====================================================================================
-CombineImageMaskReview::CombineImageMaskReview( const QString &strImage )
-	: QWidget()
-	, m_imgTemplate(strImage)
-	, m_nPosX(0)
-	, m_nPosY(0)
-{
-}
-
-QSize CombineImageMaskReview::GetTemplateImageSize() const
-{
-	return m_imgTemplate.size();
-}
-
-void CombineImageMaskReview::SetMaskPosX( int posX )
-{
-	m_nPosX = posX;
-}
-
-void CombineImageMaskReview::SetMaskPosY( int posY )
-{
-	m_nPosY = posY;
-}
-
-void CombineImageMaskReview::SetMaskSize( const QSize &size )
-{
-	m_sizeMask.setWidth(size.width());
-	m_sizeMask.setHeight(size.height());
-}
-
-void CombineImageMaskReview::paintEvent( QPaintEvent *event )
-{
-	QImage imgPreview(m_imgTemplate.size(), QImage::Format_ARGB32_Premultiplied);
-
-	QPainter painterPre(&imgPreview);
-	QBrush whiteBrush(Qt::white);
-	painterPre.drawImage(QPoint(0, 0), m_imgTemplate);
-	painterPre.fillRect(m_nPosX, m_nPosY, m_sizeMask.width(), m_sizeMask.height(), whiteBrush);
-	painterPre.end();
-
-	QPainter painter(this);
-	painter.drawImage(QPoint(0,0), imgPreview);
-	painter.end();
-
-	QWidget::paintEvent(event);
-}
 
 //====================================================================================
 DirectoryMonitorThread::DirectoryMonitorThread( const QString &strDir )
@@ -153,6 +108,7 @@ void PhotoCombineThread::run()
 			QReadLocker locker(&g_pndinProcFilesLock);
 			if (g_listPndinProcFiles.isEmpty())
 			{
+				locker.unlock();
 				g_conFileArrived.wait(&g_mtxFileArrived);
 				continue;
 			}
@@ -179,10 +135,11 @@ void PrinterThread::run()
 	while (m_bRun && m_pPhotoPrinter)
 	{
 		{
-			QReadLocker locker(&g_pndinProcFilesLock);
-			if (g_listPndinProcFiles.isEmpty())
+			QReadLocker locker(&g_pndinPrintFilesLock);
+			if (g_listPndinPrintFiles.isEmpty())
 			{
-				g_conFileArrived.wait(&g_mtxFileArrived);
+				locker.unlock();
+				g_conPndinPrint.wait(&g_mtxPndinPrint);
 				continue;
 			}
 		}
@@ -197,32 +154,38 @@ void PrinterThread::run()
 
 
 //====================================================================================
-OuputDisplayWidget::OuputDisplayWidget( QWidget *parent /*= 0*/ )
+AutoScaledDisplayWidget::AutoScaledDisplayWidget( QWidget *parent /*= 0*/ )
 	: QWidget(parent)
 {
-	 setAutoFillBackground(true);
+
 }
 
-void OuputDisplayWidget::SetDisplayImage( const QImage &image )
+void AutoScaledDisplayWidget::SetDisplayImage( const QImage &image )
 {
-	
+	m_image = image;
 }
 
-void OuputDisplayWidget::paintEvent( QPaintEvent *event )
+void AutoScaledDisplayWidget::paintEvent( QPaintEvent *event )
 {
+	QPainter painter(this);
+	painter.drawImage(QPoint(0, 0), m_image.scaled(size(), Qt::KeepAspectRatio, 
+		Qt::SmoothTransformation));
+	painter.end();
+
 	QWidget::paintEvent(event);
 }
-
 
 //====================================================================================
 AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	: QMainWindow(parent, flags)
-	, m_FgImgPos(0, 0)
+	, m_FgMaskPos(0, 0)
 	, m_FgMaskSize(800, 600)
 	, m_pMaskReviewWidget(NULL)
+	, m_pOutputDispWidget(NULL)
 	, m_pThreadMonitor(NULL)
 	, m_pThreadCombine(NULL)
 	, m_pThreadPrint(NULL)
+	, m_pPrinter(NULL)
 {
 	QString strSetting = QApplication::applicationDirPath() + "/setting.ini";;
 	m_pSettings = new QSettings(strSetting, QSettings::IniFormat, this);
@@ -231,23 +194,40 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	m_strScanDir = m_pSettings->value(SETTING_SCANPATH).toString();
 	m_strBackupDir = m_pSettings->value(SETTING_BACKUPPATH).toString();
 	m_strOutputDir = m_pSettings->value(SETTING_OUTPUTPATH).toString();
+	m_FgMaskPos = m_pSettings->value(SETTING_CONFIG_MASK_COORD).isNull() ? m_FgMaskPos : m_pSettings->value(SETTING_CONFIG_MASK_COORD).toPoint();
+	m_FgMaskSize = m_pSettings->value(SETTING_CONFIG_MASK_SIZE).isNull() ? m_FgMaskSize : m_pSettings->value(SETTING_CONFIG_MASK_SIZE).toSize();
 
 	ui.setupUi(this);
+	
+	// Print output tab's preview widget.
+	m_pOutputDispWidget = new AutoScaledDisplayWidget();
+	QVBoxLayout *pOutputLayout = new QVBoxLayout();
+	pOutputLayout->setMargin(2);
+	pOutputLayout->addWidget(m_pOutputDispWidget);
+	ui.widgetOutputDisplay->setLayout(pOutputLayout);
 
-	QImage image(m_strTmptFilePath);
-	QPalette pal(ui.widgetOutputDisplay->palette());
-	pal.setBrush(backgroundRole(), QBrush(image.scaled(ui.widgetOutputDisplay->size(), Qt::KeepAspectRatio, 
-		Qt::SmoothTransformation)));
-	ui.widgetOutputDisplay->setPalette(pal);
+	// Frame setting tab's preview widget.
+	m_pMaskReviewWidget = new AutoScaledDisplayWidget();
+	QVBoxLayout *pFrameReviewLayout = new QVBoxLayout();
+	pFrameReviewLayout->setMargin(2);
+	pFrameReviewLayout->addWidget(m_pMaskReviewWidget);
+	ui.widgetFramePreview->setLayout(pFrameReviewLayout);
 
+	// Frame setting tab's widget initial.
+	ui.spBoxMaskWeight->setValue(m_FgMaskSize.width());
+	ui.spBoxMaskHeight->setValue(m_FgMaskSize.height());
+	ui.horzSliderImgHeight->setValue(m_FgMaskSize.height());
+	ui.horzSliderImgWidth->setValue(m_FgMaskSize.width());
+	ui.dSpBoxMaskCoordX->setValue(m_FgMaskPos.x());
+	ui.dSpBoxMaskCoordY->setValue(m_FgMaskPos.y());
+	ui.ImgHorzPosSlider->setValue(m_FgMaskPos.x());
+	ui.ImgVertPosSlider->setValue(m_FgMaskPos.y());
+
+	// Main setting, directory initial.
 	ui.lnEdtTemplate->setText(m_strTmptFilePath);
 	ui.lnEdtScanDir->setText(m_strScanDir);
 	ui.lnEdtBackupDir->setText(m_strBackupDir);
 	ui.lnEdtOutputDir->setText(m_strOutputDir);
-
-	ui.ImgHorzPosSlider->setRange(0, 100);
-	ui.ImgHorzPosSlider->setValue(0);
-	ui.ImgHorzPosSlider->setTickInterval(1);
 
 	ui.btnStop->setEnabled(false);
 
@@ -273,8 +253,6 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 			ui.comboBoxPrinters->setCurrentIndex(i);
 	}
 
-	connect(ui.ImgHorzPosSlider, SIGNAL(valueChanged(int)), this, SLOT(OnPosHorizontalChange()));
-	connect(ui.ImgVertPosSlider, SIGNAL(valueChanged(int)), this, SLOT(OnPosVerticalChange()));
 
 	// Template File, Backup Dir, Output Dir, Scan Dir Path Select buttons.
 	connect(ui.btnSelectScanPath, SIGNAL(pressed()), this, SLOT(OnSelectScanDir()));
@@ -289,13 +267,19 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	connect(ui.btnPrint, SIGNAL(pressed()), this, SLOT(OnPrintCopy()));
 
 	// Mask width(height), Mask Coordinate.
-	connect(ui.spBoxMaskHeight, SIGNAL(valueChanged(int)), this, SLOT(OnMaskHeightChange(int)));
-	connect(ui.spBoxMaskWeight, SIGNAL(valueChanged(int)), this, SLOT(OnMaskWidthChange(int)));
+	connect(ui.horzSliderImgWidth, SIGNAL(valueChanged(int)), this, SLOT(OnMaskWidthChange(int)));
+	connect(ui.horzSliderImgHeight, SIGNAL(valueChanged(int)), this, SLOT(OnMaskHeightChange(int)));
+	connect(ui.spBoxMaskHeight, SIGNAL(valueChanged(int)), this, SLOT(OnMaskHeightChangeSB(int)));
+	connect(ui.spBoxMaskWeight, SIGNAL(valueChanged(int)), this, SLOT(OnMaskWidthChangeSB(int)));
+	connect(ui.ImgHorzPosSlider, SIGNAL(valueChanged(int)), this, SLOT(OnMaskCoordChangeX(int)));
+	connect(ui.ImgVertPosSlider, SIGNAL(valueChanged(int)), this, SLOT(OnMaskCoordChangeY(int)));
+	connect(ui.dSpBoxMaskCoordX, SIGNAL(valueChanged(int)), this, SLOT(OnMaskCoordChangeXSB(int)));
+	connect(ui.dSpBoxMaskCoordY, SIGNAL(valueChanged(int)), this, SLOT(OnMaskCoordChangeYSB(int)));
 
 	// Tab change.
 	connect(ui.tabWidget, SIGNAL(currentChanged(int)), this, SLOT(OnCurrentChanged(int)));
 
-	// Ouput tab's widgets.
+	// Output tab's widgets.
 	connect(ui.lstViewOutput, SIGNAL(clicked(const QModelIndex &)), this, SLOT(OnOuputItemSelected(const QModelIndex &)));
 	connect(ui.lnEdtFileName, SIGNAL(textChanged(const QString &)), this, SLOT(OnFindOutputFileName(const QString &)));
 	connect(ui.btnRefreshOuputList, SIGNAL(pressed()), this, SLOT(OnUpdateOutputList()));
@@ -338,7 +322,7 @@ void AutoPrinter::paintEvent(QPaintEvent *event)
 
 	QPainter outputPainter(&imgOutput);
 	outputPainter.drawImage(QPoint(0, 0), imgTemplate);
-	outputPainter.drawImage(m_FgImgPos, imgMask);
+	outputPainter.drawImage(m_FgMaskPos, imgMask);
 	outputPainter.end();
 
 	QPainter painter(this);
@@ -356,18 +340,6 @@ void AutoPrinter::resizeEvent( QResizeEvent *event )
 	//ui.widgetOutputDisplay->setPalette(pal);
 
 	QMainWindow::resizeEvent(event);
-}
-
-void AutoPrinter::OnPosHorizontalChange()
-{
-	m_FgImgPos.setX(ui.ImgHorzPosSlider->value());
-	update();
-}
-
-void AutoPrinter::OnPosVerticalChange()
-{
-	m_FgImgPos.setY(ui.ImgVertPosSlider->value());
-	update();
 }
 
 void AutoPrinter::OnSelectScanDir()
@@ -427,6 +399,9 @@ void AutoPrinter::OnMonitorFolderStart()
 		QMessageBox::warning(this, AutoPrinter::tr("Auto Printer"), AutoPrinter::tr("Please check your setting of backup path"));
 		return;
 	}
+	InitialPrinter();
+
+	m_imgTemplate = QImage(m_strTmptFilePath);
 
 	if (m_pThreadMonitor && m_pThreadMonitor->isRunning())
 	{
@@ -451,6 +426,8 @@ void AutoPrinter::OnMonitorFolderStart()
 
 	ui.btnStart->setEnabled(false);
 	ui.btnStop->setEnabled(true);
+	ui.groupBoxFrameSetting->setEnabled(false);
+	ui.groupBoxDirConfig->setEnabled(false);
 }
 
 void AutoPrinter::OnMonitorFolderStop()
@@ -460,47 +437,131 @@ void AutoPrinter::OnMonitorFolderStop()
 
 	ui.btnStart->setEnabled(true);
 	ui.btnStop->setEnabled(false);
+	ui.groupBoxFrameSetting->setEnabled(true);
+	ui.groupBoxDirConfig->setEnabled(true);
 }
 
 void AutoPrinter::OnSaveSettings()
 {
-	// TODO:
+	m_pSettings->setValue(SETTING_CONFIG_MASK_COORD, m_FgMaskPos);
+	m_pSettings->setValue(SETTING_CONFIG_MASK_SIZE, m_FgMaskSize);
 }
 
 void AutoPrinter::InitTemplatePreviewTab()
 {
-	if (m_pMaskReviewWidget == NULL)
-		m_pMaskReviewWidget = new CombineImageMaskReview(m_strTmptFilePath);
+	if (m_strTmptFilePath.isEmpty() || !QFile::exists(m_strTmptFilePath) || !ui.groupBoxDirConfig->isEnabled())
+	{
+		ui.groupBoxFrameSetting->setEnabled(false);
+	}
+	else
+	{
+		ui.groupBoxFrameSetting->setEnabled(true);
+	}
 
-	QSize size = m_pMaskReviewWidget->GetTemplateImageSize();
-	int nMaxWidth = size.width() - ui.spBoxMaskWeight->value();
-	int nMaxHeight = size.height() - ui.spBoxMaskHeight->value();
-	ui.ImgHorzPosSlider->setRange(0, nMaxWidth);
-	ui.ImgVertPosSlider->setRange(0, nMaxHeight);
+	// Update slider max value once update the template image.
+	m_imgTemplate = QImage(m_strTmptFilePath);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	UpdateMaskConfigRange();
+}
+
+void AutoPrinter::UpdateMaskConfigRange()
+{
+	QSize size = m_imgTemplate.size();
+	ui.ImgHorzPosSlider->setRange(0, size.width() - m_FgMaskSize.width());
+	ui.ImgVertPosSlider->setRange(0, size.height() - m_FgMaskSize.height());
+	ui.dSpBoxMaskCoordX->setRange(0, size.width() - m_FgMaskSize.width());
+	ui.dSpBoxMaskCoordY->setRange(0, size.height() - m_FgMaskSize.height());
+	ui.spBoxMaskHeight->setRange(0, size.width());
+	ui.spBoxMaskWeight->setRange(0, size.height());
+	ui.horzSliderImgHeight->setRange(0, size.height());
+	ui.horzSliderImgWidth->setRange(0, size.width());
+
+	ui.ImgHorzPosSlider->update();
+	ui.ImgVertPosSlider->update();
+	ui.dSpBoxMaskCoordX->update();
+	ui.dSpBoxMaskCoordY->update();
+	ui.spBoxMaskHeight->update();
+	ui.spBoxMaskWeight->update();
+	ui.horzSliderImgHeight->update();
+	ui.horzSliderImgWidth->update();
+}
+
+QImage AutoPrinter::GetFramePreviewImage()
+{
+	QImage imgRet(m_imgTemplate.size(), QImage::Format_ARGB32_Premultiplied);
+
+	QPainter painterPre(&imgRet);
+	QBrush whiteBrush(Qt::white);
+	painterPre.drawImage(QPoint(0, 0), m_imgTemplate);
+	QRect rect(m_FgMaskPos, m_FgMaskSize);
+	painterPre.fillRect(rect, whiteBrush);
+	painterPre.end();
+
+	return imgRet;
 }
 
 void AutoPrinter::OnMaskHeightChange( int val )
 {
-	if (m_strTmptFilePath.isEmpty())
-	{
-		QMessageBox::warning(this, AutoPrinter::tr("Auto Printer"), AutoPrinter::tr("Please select a template file first!"));
-		return;
-	}
+	m_FgMaskSize.setHeight(val);
+	ui.spBoxMaskHeight->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	UpdateMaskConfigRange();
 }
 
 void AutoPrinter::OnMaskWidthChange( int val )
 {
-
+	m_FgMaskSize.setWidth(val);
+	ui.spBoxMaskWeight->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	UpdateMaskConfigRange();
 }
 
-void AutoPrinter::OnMaskCoordChangeX()
+void AutoPrinter::OnMaskHeightChangeSB( int val )
 {
-
+	m_FgMaskSize.setHeight(val);
+	ui.horzSliderImgHeight->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	UpdateMaskConfigRange();
 }
 
-void AutoPrinter::OnMaskCoordChangeY()
+void AutoPrinter::OnMaskWidthChangeSB( int val )
 {
+	m_FgMaskSize.setWidth(val);
+	ui.horzSliderImgWidth->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	UpdateMaskConfigRange();
+}
 
+void AutoPrinter::OnMaskCoordChangeX(int val)
+{
+	m_FgMaskPos.setX(val);
+	ui.dSpBoxMaskCoordX->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	UpdateMaskConfigRange();
+}
+
+void AutoPrinter::OnMaskCoordChangeY(int val)
+{
+	m_FgMaskPos.setY(val);
+	ui.dSpBoxMaskCoordY->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	UpdateMaskConfigRange();
+}
+
+void AutoPrinter::OnMaskCoordChangeXSB(int val)
+{
+	m_FgMaskPos.setX(val);
+	ui.ImgHorzPosSlider->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	UpdateMaskConfigRange();
+}
+
+void AutoPrinter::OnMaskCoordChangeYSB(int val)
+{
+	m_FgMaskPos.setY(val);
+	ui.ImgVertPosSlider->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	UpdateMaskConfigRange();
 }
 
 void AutoPrinter::OnMonitorDirChange()
@@ -531,39 +592,44 @@ void AutoPrinter::OnMonitorDirChange()
 
 void AutoPrinter::CombineImage( const QString &strInputImage )
 {
-	if (!QFile::exists(strInputImage))
-		return;
-
 	if (!QFile::exists(m_strTmptFilePath))
 	{
 		QMessageBox::warning(this, AutoPrinter::tr("Auto Printer"), AutoPrinter::tr("Please check your setting of template image path"));
 		return;
 	}
 
-	QString strImgBackup = m_strBackupDir + "\\" + strInputImage;
-	QString strImgOutput = m_strOutputDir + "\\" + strInputImage;
-	QImage imgTemplate(m_strTmptFilePath);
-	QImage imgInput(strImgBackup);
-	QImage imgOutput(imgTemplate.size(), QImage::Format_ARGB32_Premultiplied);
+	QString strImgBackupPath = m_strBackupDir + "\\" + strInputImage;
+	QString strImgOutputPath = m_strOutputDir + "\\" + strInputImage;
+
+	if (!QFile::exists(strImgBackupPath))
+		return;
+
+	QImage imgInput(strImgBackupPath);
+	QImage imgOutput(m_imgTemplate.size(), QImage::Format_ARGB32_Premultiplied);
 
 	QPainter outputPainter(&imgOutput);
-	outputPainter.drawImage(QPoint(0, 0), imgTemplate);
-	outputPainter.drawImage(QPoint(0, 0), imgInput);
+	outputPainter.drawImage(QPoint(0, 0), m_imgTemplate);
+	outputPainter.drawImage(m_FgMaskPos, imgInput.scaled(m_FgMaskSize, Qt::KeepAspectRatio, 
+		Qt::SmoothTransformation));
 	outputPainter.end();
 
-	imgOutput.save(strImgOutput);
+	imgOutput.save(strImgOutputPath);
 
-	AddPendingPrintImage(strImgOutput);
+	AddPendingPrintImage(strImgOutputPath);
 }
 
 void AutoPrinter::PrintImage( const QString &strImagePath )
 {
-
+	QImage image(strImagePath);
+	QPainter painter;
+	painter.begin(m_pPrinter);
+	painter.drawImage(QPoint(0, 0), image);
+	painter.end();
 }
 
 void AutoPrinter::InitPrinterSelectTab()
 {
-
+	// TODO:
 }
 
 void AutoPrinter::OnCurrentChanged(int nIndex)
@@ -578,6 +644,11 @@ void AutoPrinter::OnCurrentChanged(int nIndex)
 	case TAB_INDEX_OUTPUT:
 		{
 			InitCombineOutputTab();
+		}
+		break;
+	case TAB_INDEX_FRAME:
+		{
+			InitTemplatePreviewTab();
 		}
 		break;
 	default:
@@ -616,6 +687,7 @@ void AutoPrinter::OnPrintCopy()
 		return;
 	}
 	
+	InitialPrinter();
 	AddPendingPrintImage(filePath, ui.spBoxCopyNum->value(), true);	
 }
 
@@ -654,9 +726,30 @@ void AutoPrinter::OnOuputItemSelected( const QModelIndex &index )
 {
 	QString strSelectedImg = index.model()->data(index, Qt::DisplayRole).toString();
 	ui.labOutputReview->setText(strSelectedImg);
+
+	QString strImgPath = m_strOutputDir + "\\" + strSelectedImg;
+	if (QFile::exists(strImgPath))
+	{
+		QImage image(strImgPath);
+		m_pOutputDispWidget->SetDisplayImage(image);
+	}
+	
 }
 
 void AutoPrinter::OnFindOutputFileName( const QString& string )
 {
 	ui.lstViewOutput->keyboardSearch(string);
+}
+
+void AutoPrinter::InitialPrinter()
+{
+	if (m_pPrinter == NULL)
+	{
+		m_pPrinter = new QPrinter(QPrinter::HighResolution);
+		QPrintDialog* dlg = new QPrintDialog(m_pPrinter); 
+		if(dlg->exec() == QDialog::Accepted) { 
+
+		} 
+		delete dlg; 
+	}
 }

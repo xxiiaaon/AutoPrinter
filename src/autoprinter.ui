@@ -30,7 +30,7 @@
     <item row="0" column="0">
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>2</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="tabMain">
        <attribute name="title">
@@ -40,76 +40,85 @@
         <item>
          <layout class="QVBoxLayout" name="verticalLayout">
           <item>
-           <layout class="QGridLayout" name="gridLayout_2">
-            <item row="2" column="1">
-             <widget class="QLineEdit" name="lnEdtBackupDir"/>
-            </item>
-            <item row="1" column="0">
-             <widget class="QLabel" name="label">
-              <property name="text">
-               <string>Scan Path</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="0">
-             <widget class="QLabel" name="label_2">
-              <property name="text">
-               <string>Template</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="0">
-             <widget class="QLabel" name="label_3">
-              <property name="text">
-               <string>Backup Path</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="1">
-             <widget class="QLineEdit" name="lnEdtScanDir"/>
-            </item>
-            <item row="3" column="0">
-             <widget class="QLabel" name="label_4">
-              <property name="text">
-               <string>Ouput Path</string>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="1">
-             <widget class="QLineEdit" name="lnEdtOutputDir"/>
-            </item>
-            <item row="1" column="2">
-             <widget class="QPushButton" name="btnSelectScanPath">
-              <property name="text">
-               <string>Select</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="1">
-             <widget class="QLineEdit" name="lnEdtTemplate"/>
-            </item>
-            <item row="0" column="2">
-             <widget class="QPushButton" name="btnSelectTemplate">
-              <property name="text">
-               <string>Select</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="2">
-             <widget class="QPushButton" name="btnSelectBackupPath">
-              <property name="text">
-               <string>Select</string>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="2">
-             <widget class="QPushButton" name="btnSelectOutputPath">
-              <property name="text">
-               <string>Select</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
+           <widget class="QGroupBox" name="groupBoxDirConfig">
+            <property name="title">
+             <string>GroupBox</string>
+            </property>
+            <layout class="QGridLayout" name="gridLayout_4">
+             <item row="0" column="0">
+              <layout class="QGridLayout" name="gridLayout_2">
+               <item row="4" column="1">
+                <widget class="QLineEdit" name="lnEdtBackupDir"/>
+               </item>
+               <item row="3" column="0">
+                <widget class="QLabel" name="label">
+                 <property name="text">
+                  <string>Scan Path</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="0">
+                <widget class="QLabel" name="label_2">
+                 <property name="text">
+                  <string>Template</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="0">
+                <widget class="QLabel" name="label_3">
+                 <property name="text">
+                  <string>Backup Path</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="1">
+                <widget class="QLineEdit" name="lnEdtScanDir"/>
+               </item>
+               <item row="3" column="2">
+                <widget class="QPushButton" name="btnSelectScanPath">
+                 <property name="text">
+                  <string>Select</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="2">
+                <widget class="QPushButton" name="btnSelectTemplate">
+                 <property name="text">
+                  <string>Select</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="1">
+                <widget class="QLineEdit" name="lnEdtOutputDir"/>
+               </item>
+               <item row="2" column="1">
+                <widget class="QLineEdit" name="lnEdtTemplate"/>
+               </item>
+               <item row="5" column="0">
+                <widget class="QLabel" name="label_4">
+                 <property name="text">
+                  <string>Ouput Path</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="2">
+                <widget class="QPushButton" name="btnSelectBackupPath">
+                 <property name="text">
+                  <string>Select</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="2">
+                <widget class="QPushButton" name="btnSelectOutputPath">
+                 <property name="text">
+                  <string>Select</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
           </item>
          </layout>
         </item>
@@ -254,7 +263,7 @@
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_6">
         <item>
-         <widget class="QWidget" name="widget" native="true">
+         <widget class="QWidget" name="widgetFramePreview" native="true">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
             <horstretch>0</horstretch>
@@ -264,7 +273,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QGroupBox" name="groupBox_2">
+         <widget class="QGroupBox" name="groupBoxFrameSetting">
           <property name="title">
            <string>GroupBox</string>
           </property>
@@ -298,7 +307,7 @@
                   </widget>
                  </item>
                  <item>
-                  <widget class="QDoubleSpinBox" name="dSpBoxMaskCoordX">
+                  <widget class="QSpinBox" name="dSpBoxMaskCoordX">
                    <property name="sizePolicy">
                     <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
                      <horstretch>0</horstretch>
@@ -310,6 +319,9 @@
                      <width>80</width>
                      <height>0</height>
                     </size>
+                   </property>
+                   <property name="maximum">
+                    <number>999999</number>
                    </property>
                   </widget>
                  </item>
@@ -350,7 +362,7 @@
                   </widget>
                  </item>
                  <item>
-                  <widget class="QDoubleSpinBox" name="dSpBoxMaskCoordY">
+                  <widget class="QSpinBox" name="dSpBoxMaskCoordY">
                    <property name="sizePolicy">
                     <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
                      <horstretch>0</horstretch>
@@ -362,6 +374,9 @@
                      <width>80</width>
                      <height>0</height>
                     </size>
+                   </property>
+                   <property name="maximum">
+                    <number>999999</number>
                    </property>
                   </widget>
                  </item>
@@ -404,6 +419,9 @@
                  <property name="sizeConstraint">
                   <enum>QLayout::SetMinimumSize</enum>
                  </property>
+                 <property name="leftMargin">
+                  <number>20</number>
+                 </property>
                  <item>
                   <layout class="QHBoxLayout" name="horizontalLayout_7">
                    <item>
@@ -427,9 +445,34 @@
                        <height>0</height>
                       </size>
                      </property>
+                     <property name="maximum">
+                      <number>999999</number>
+                     </property>
                     </widget>
                    </item>
                   </layout>
+                 </item>
+                 <item>
+                  <widget class="QSlider" name="horzSliderImgHeight">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>200</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="maximum">
+                    <number>999999</number>
+                   </property>
+                   <property name="orientation">
+                    <enum>Qt::Horizontal</enum>
+                   </property>
+                  </widget>
                  </item>
                  <item>
                   <layout class="QHBoxLayout" name="horizontalLayout_3">
@@ -454,27 +497,36 @@
                        <height>0</height>
                       </size>
                      </property>
+                     <property name="maximum">
+                      <number>999999</number>
+                     </property>
                     </widget>
                    </item>
                   </layout>
                  </item>
+                 <item>
+                  <widget class="QSlider" name="horzSliderImgWidth">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>200</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="maximum">
+                    <number>9999999</number>
+                   </property>
+                   <property name="orientation">
+                    <enum>Qt::Horizontal</enum>
+                   </property>
+                  </widget>
+                 </item>
                 </layout>
-               </item>
-               <item>
-                <spacer name="verticalSpacer_2">
-                 <property name="orientation">
-                  <enum>Qt::Vertical</enum>
-                 </property>
-                 <property name="sizeType">
-                  <enum>QSizePolicy::Minimum</enum>
-                 </property>
-                 <property name="sizeHint" stdset="0">
-                  <size>
-                   <width>20</width>
-                   <height>40</height>
-                  </size>
-                 </property>
-                </spacer>
                </item>
               </layout>
              </item>
@@ -504,7 +556,7 @@
        </attribute>
        <layout class="QGridLayout" name="gridLayout_3">
         <item row="2" column="1">
-         <widget class="QGroupBox" name="groupBox_3">
+         <widget class="QGroupBox" name="groupBoxManualPrint">
           <property name="title">
            <string>GroupBox</string>
           </property>
@@ -704,19 +756,6 @@
         <item row="1" column="1">
          <layout class="QVBoxLayout" name="vertLayoutOutputDisp">
           <item>
-           <widget class="QWidget" name="widgetOutputDisplay" native="true">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="autoFillBackground">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item>
            <widget class="QLabel" name="labOutputReview">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
@@ -730,6 +769,20 @@
             <property name="alignment">
              <set>Qt::AlignCenter</set>
             </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QWidget" name="widgetOutputDisplay" native="true">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="autoFillBackground">
+             <bool>false</bool>
+            </property>
+            <zorder>labOutputReview</zorder>
            </widget>
           </item>
          </layout>
