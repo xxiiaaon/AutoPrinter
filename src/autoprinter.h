@@ -55,6 +55,12 @@ public:
 	virtual void CombineImage(const QString &strInputImage) = 0;
 };
 
+class PhotoPrinter
+{
+public:
+	virtual void PrintImage(const QString &strImagePath) = 0;
+};
+
 //=========================================================================
 class PhotoCombineThread : public QThread
 {
@@ -69,33 +75,67 @@ private:
 };
 
 //=========================================================================
+class PrinterThread : public QThread
+{
+	Q_OBJECT
+public:
+	PrinterThread(PhotoPrinter* pPhotoPrinter);
+	virtual void run();
+
+private:
+	bool m_bRun;
+	PhotoPrinter* m_pPhotoPrinter;
+};
+
+//=========================================================================
+class OuputDisplayWidget : public QWidget
+{
+	Q_OBJECT
+public:
+	OuputDisplayWidget(QWidget *parent = 0);
+	void SetDisplayImage(const QImage &image);
+
+	virtual void paintEvent(QPaintEvent *event);
+
+private:
+	QImage m_image;
+};
+
+//=========================================================================
 class AutoPrinter 
 	: public QMainWindow
 	, public PhotoCombiner
+	, public PhotoPrinter
 {
 	Q_OBJECT
-
 public:
 	AutoPrinter(QWidget *parent = 0, Qt::WFlags flags = 0);
 	~AutoPrinter();
 
 	virtual void CombineImage(const QString &strInputImage);
+	virtual void PrintImage(const QString &strImagePath);
 
 protected:
 	virtual void paintEvent(QPaintEvent *event);
+	virtual void resizeEvent(QResizeEvent *event);
 
 private:
 	void SaveSettings();
 
 	// Tab initial functions.
-	void InitTemplatePreview();
-	void InitPrinterSelect();
+	void InitTemplatePreviewTab();
+	void InitPrinterSelectTab();
+	void InitCombineOutputTab();
+
+	// Image process, image print thread synchronization functions.
+	void AddPendingPrintImage(const QString &strImagePath, int nTimes = 1, bool bPreempt = false);
 
 private slots:
 	// Main functions.
 	void OnMonitorFolderStart();
 	void OnMonitorFolderStop();
 	void OnSaveSettings();
+	void OnPrintCopy();
 
 	// Settings.
 	void OnSelectScanDir();
@@ -119,6 +159,11 @@ private slots:
 	// Tab initial.
 	void OnCurrentChanged(int nIndex);
 
+	// Output tab's relatives.
+	void OnOuputItemSelected(const QModelIndex &index);
+	void OnFindOutputFileName(const QString& string);
+	void OnUpdateOutputList();
+
 private:
 	Ui::AutoPrinterClass ui;
 
@@ -134,6 +179,7 @@ private:
 	CombineImageMaskReview* m_pMaskReviewWidget;
 	DirectoryMonitorThread* m_pThreadMonitor;
 	PhotoCombineThread*		m_pThreadCombine;
+	PrinterThread*			m_pThreadPrint;
 
 	QSettings* m_pSettings;
 };
