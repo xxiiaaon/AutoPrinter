@@ -28,13 +28,13 @@ private:
 };
 
 //=========================================================================
-class PhotoCombiner
+class PhotoCombinerInterface
 {
 public:
 	virtual void CombineImage(const QString &strInputImage) = 0;
 };
 
-class PhotoPrinter
+class PhotoPrinterInterface
 {
 public:
 	virtual void PrintImage(const QString &strImagePath) = 0;
@@ -45,12 +45,12 @@ class PhotoCombineThread : public QThread
 {
 	Q_OBJECT
 public:
-	PhotoCombineThread(PhotoCombiner* pPhotoCombiner);
+	PhotoCombineThread(PhotoCombinerInterface* pPhotoCombiner);
 	virtual void run();
 
 private:
 	bool m_bRun;
-	PhotoCombiner* m_pPhotoCombiner;
+	PhotoCombinerInterface* m_pPhotoCombiner;
 };
 
 //=========================================================================
@@ -58,12 +58,12 @@ class PrinterThread : public QThread
 {
 	Q_OBJECT
 public:
-	PrinterThread(PhotoPrinter* pPhotoPrinter);
+	PrinterThread(PhotoPrinterInterface* pPhotoPrinter);
 	virtual void run();
 
 private:
 	bool m_bRun;
-	PhotoPrinter* m_pPhotoPrinter;
+	PhotoPrinterInterface* m_pPhotoPrinter;
 };
 
 //=========================================================================
@@ -83,8 +83,8 @@ private:
 //=========================================================================
 class AutoPrinter 
 	: public QMainWindow
-	, public PhotoCombiner
-	, public PhotoPrinter
+	, public PhotoCombinerInterface
+	, public PhotoPrinterInterface
 {
 	Q_OBJECT
 public:
@@ -95,8 +95,7 @@ public:
 	virtual void PrintImage(const QString &strImagePath);
 
 protected:
-	virtual void paintEvent(QPaintEvent *event);
-	virtual void resizeEvent(QResizeEvent *event);
+	bool eventFilter(QObject *obj, QEvent *event);
 
 private:
 	void SaveSettings();
@@ -105,9 +104,9 @@ private:
 	void InitialPrinter();
 
 	// Tab initial functions.
-	void InitTemplatePreviewTab();
-	void InitPrinterSelectTab();
-	void InitCombineOutputTab();
+	void InitPreviewTab();
+	void InitPrinterTab();
+	void InitOutputTab();
 
 	// Image process, image print thread synchronization functions.
 	void AddPendingPrintImage(const QString &strImagePath, int nTimes = 1, bool bPreempt = false);
@@ -146,6 +145,11 @@ private slots:
 	void OnFindOutputFileName(const QString& string);
 	void OnUpdateOutputList();
 
+	// Printer tab's relatives.
+	void OnUpdatePrintingList();
+	void OnPrintingItemSelected(const QModelIndex &index);
+	void OnCancelPrintItem();
+
 private:
 	Ui::AutoPrinterClass ui;
 
@@ -160,6 +164,7 @@ private:
 
 	AutoScaledDisplayWidget* m_pMaskReviewWidget;
 	AutoScaledDisplayWidget* m_pOutputDispWidget;
+	AutoScaledDisplayWidget* m_pPrintReviewWidget;
 
 	DirectoryMonitorThread* m_pThreadMonitor;
 	PhotoCombineThread*		m_pThreadCombine;

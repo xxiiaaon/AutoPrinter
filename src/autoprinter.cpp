@@ -14,15 +14,26 @@
 #define TAB_INDEX_OUTPUT	2
 #define TAB_INDEX_PRINTER	3
 
+#define JPEG	"*.jpg"
+#define PNG		"*.png"
+#define BMP		"*.bmp"
+
+const QStringList g_strLstSupFormat = (QStringList() << JPEG << PNG << BMP);
+
+// Thread concurrent relatives.
+// Pending process files list control.
 QStringList g_listPndinProcFiles;
 QReadWriteLock g_pndinProcFilesLock;
 
+// Pending print files list control.
 QStringList g_listPndinPrintFiles;
 QReadWriteLock g_pndinPrintFilesLock;
 
+// New file arrived.
 QWaitCondition g_conFileArrived;
 QMutex g_mtxFileArrived;
 
+// Print print file list.
 QWaitCondition g_conPndinPrint;
 QMutex g_mtxPndinPrint;
 
@@ -66,6 +77,7 @@ void DirectoryMonitorThread::run()
 				DWORD dwAction = pfiNotifyInfo->Action;   
 				DWORD dwFileNameLength = pfiNotifyInfo->FileNameLength;  
 
+				// If action is add, them notify.
 				if (dwAction == FILE_ACTION_ADDED)
 				{
 					emit directoryChange();
@@ -93,7 +105,7 @@ void DirectoryMonitorThread::Stop()
 }
 
 //====================================================================================
-PhotoCombineThread::PhotoCombineThread(PhotoCombiner* pPhotoCombiner)
+PhotoCombineThread::PhotoCombineThread(PhotoCombinerInterface* pPhotoCombiner)
 	: m_bRun(true)
 	, m_pPhotoCombiner(pPhotoCombiner)
 {
@@ -114,16 +126,22 @@ void PhotoCombineThread::run()
 			}
 		}
 		
-		{
+		QString strInputImage;
+		{	// Retieve the first image name in pending queue.
+			QReadLocker locker(&g_pndinProcFilesLock);
+			strInputImage = g_listPndinProcFiles.first();
+		}
+		m_pPhotoCombiner->CombineImage(strInputImage);
+
+		{	// Remove the first image nage from queue after processing.
 			QWriteLocker locker(&g_pndinProcFilesLock);
-			m_pPhotoCombiner->CombineImage(g_listPndinProcFiles.first());
 			g_listPndinProcFiles.removeFirst();
 		}
 	}
 }
 
 //====================================================================================
-PrinterThread::PrinterThread( PhotoPrinter* pPhotoPrinter )
+PrinterThread::PrinterThread( PhotoPrinterInterface* pPhotoPrinter )
 	: m_bRun(true)
 	, m_pPhotoPrinter(pPhotoPrinter)
 {
@@ -134,7 +152,7 @@ void PrinterThread::run()
 {
 	while (m_bRun && m_pPhotoPrinter)
 	{
-		{
+		{	// Wait if queue empty.
 			QReadLocker locker(&g_pndinPrintFilesLock);
 			if (g_listPndinPrintFiles.isEmpty())
 			{
@@ -143,10 +161,17 @@ void PrinterThread::run()
 				continue;
 			}
 		}
+		QString strImagePath;
+		{	// Retieve the first image name in print queue.
+			QReadLocker locker(&g_pndinPrintFilesLock);
+			strImagePath = g_listPndinPrintFiles.first();
+		}
 
-		{
-			QWriteLocker lock(&g_pndinPrintFilesLock);
-			m_pPhotoPrinter->PrintImage(g_listPndinPrintFiles.first());
+		sleep(600);
+		//m_pPhotoPrinter->PrintImage(strImagePath);
+
+		{	// Remove the first image nage from queue after printing.
+			QWriteLocker locker(&g_pndinPrintFilesLock);
 			g_listPndinPrintFiles.removeFirst();
 		}
 	}
@@ -182,6 +207,7 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	, m_FgMaskSize(800, 600)
 	, m_pMaskReviewWidget(NULL)
 	, m_pOutputDispWidget(NULL)
+	, m_pPrintReviewWidget(NULL)
 	, m_pThreadMonitor(NULL)
 	, m_pThreadCombine(NULL)
 	, m_pThreadPrint(NULL)
@@ -213,6 +239,13 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	pFrameReviewLayout->addWidget(m_pMaskReviewWidget);
 	ui.widgetFramePreview->setLayout(pFrameReviewLayout);
 
+	// Printing review widget.
+	m_pPrintReviewWidget = new AutoScaledDisplayWidget();
+	QVBoxLayout *pPrintingReviewLayout = new QVBoxLayout();
+	pPrintingReviewLayout->setMargin(2);
+	pPrintingReviewLayout->addWidget(m_pPrintReviewWidget);
+	ui.widgetPrintingReview->setLayout(pPrintingReviewLayout);
+
 	// Frame setting tab's widget initial.
 	ui.spBoxMaskWeight->setValue(m_FgMaskSize.width());
 	ui.spBoxMaskHeight->setValue(m_FgMaskSize.height());
@@ -228,6 +261,10 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	ui.lnEdtScanDir->setText(m_strScanDir);
 	ui.lnEdtBackupDir->setText(m_strBackupDir);
 	ui.lnEdtOutputDir->setText(m_strOutputDir);
+
+	// Printing Review Tab's widget initial.
+	ui.btnPrintCancel->setEnabled(false);
+	ui.btnPrintCancel->setVisible(false);
 
 	ui.btnStop->setEnabled(false);
 
@@ -253,6 +290,7 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 			ui.comboBoxPrinters->setCurrentIndex(i);
 	}
 
+	ui.lstViewPrinters->installEventFilter(this);
 
 	// Template File, Backup Dir, Output Dir, Scan Dir Path Select buttons.
 	connect(ui.btnSelectScanPath, SIGNAL(pressed()), this, SLOT(OnSelectScanDir()));
@@ -281,8 +319,14 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 
 	// Output tab's widgets.
 	connect(ui.lstViewOutput, SIGNAL(clicked(const QModelIndex &)), this, SLOT(OnOuputItemSelected(const QModelIndex &)));
+	connect(ui.lstViewOutput, SIGNAL(activated(const QModelIndex &)), this, SLOT(OnOuputItemSelected(const QModelIndex &)));
 	connect(ui.lnEdtFileName, SIGNAL(textChanged(const QString &)), this, SLOT(OnFindOutputFileName(const QString &)));
 	connect(ui.btnRefreshOuputList, SIGNAL(pressed()), this, SLOT(OnUpdateOutputList()));
+
+	// Printer tab's widgets.
+	connect(ui.lstViewPrinters, SIGNAL(clicked(const QModelIndex &)), this, SLOT(OnPrintingItemSelected(const QModelIndex &)));
+	connect(ui.lstViewPrinters, SIGNAL(activated(const QModelIndex &)), this, SLOT(OnPrintingItemSelected(const QModelIndex &)));
+	connect(ui.btnPrintCancel, SIGNAL(pressed()), this, SLOT(OnCancelPrintItem()));
 }
 
 AutoPrinter::~AutoPrinter()
@@ -305,42 +349,9 @@ AutoPrinter::~AutoPrinter()
 		delete m_pThreadPrint;
 	}
 	
-
 	//m_pSettings->sync();
 }
 
-void AutoPrinter::paintEvent(QPaintEvent *event)
-{
-	QImage imgTemplate("K:\\test\\template.jpg");
-	QImage imgInput("K:\\test\\input.png");
-	QImage imgOutput(imgTemplate.size(), QImage::Format_ARGB32_Premultiplied);
-	QImage imgMask(m_FgMaskSize, QImage::Format_ARGB32_Premultiplied);
-
-	QBrush whiteBrush(Qt::white);
-	QPainter maskPainter(&imgMask);
-	maskPainter.setBackground(whiteBrush);
-
-	QPainter outputPainter(&imgOutput);
-	outputPainter.drawImage(QPoint(0, 0), imgTemplate);
-	outputPainter.drawImage(m_FgMaskPos, imgMask);
-	outputPainter.end();
-
-	QPainter painter(this);
-	painter.drawImage(QPoint(0, 0), imgOutput);
-	painter.end();
-	QMainWindow::paintEvent(event);	
-}
-
-void AutoPrinter::resizeEvent( QResizeEvent *event )
-{
-	//QImage image(m_strTmptFilePath);
-	//QPalette pal(ui.widgetOutputDisplay->palette());
-	//pal.setBrush(backgroundRole(), QBrush(image.scaled(ui.widgetOutputDisplay->size(), Qt::KeepAspectRatio, 
-	//	Qt::FastTransformation)));
-	//ui.widgetOutputDisplay->setPalette(pal);
-
-	QMainWindow::resizeEvent(event);
-}
 
 void AutoPrinter::OnSelectScanDir()
 {
@@ -386,6 +397,7 @@ void AutoPrinter::OnSelectTemplatePath()
 	m_pSettings->setValue(SETTING_TEMPLATEFILE, m_strTmptFilePath);
 }
 
+// TODO: Strongly recommand to refactor this function afterwards.
 void AutoPrinter::OnMonitorFolderStart()
 {
 	if (m_strScanDir.isEmpty() || !QFile::exists(m_strScanDir))
@@ -403,6 +415,7 @@ void AutoPrinter::OnMonitorFolderStart()
 
 	m_imgTemplate = QImage(m_strTmptFilePath);
 
+	// Delete the exist monitoring thread first.
 	if (m_pThreadMonitor && m_pThreadMonitor->isRunning())
 	{
 		m_pThreadMonitor->terminate();
@@ -416,6 +429,7 @@ void AutoPrinter::OnMonitorFolderStart()
 		connect(m_pThreadMonitor, SIGNAL(directoryChange()), this, SLOT(OnMonitorDirChange()));
 	}
 
+	// Create a combiner thread.
 	if (m_pThreadCombine == NULL)
 	{
 		m_pThreadCombine = new PhotoCombineThread(this);
@@ -447,7 +461,7 @@ void AutoPrinter::OnSaveSettings()
 	m_pSettings->setValue(SETTING_CONFIG_MASK_SIZE, m_FgMaskSize);
 }
 
-void AutoPrinter::InitTemplatePreviewTab()
+void AutoPrinter::InitPreviewTab()
 {
 	if (m_strTmptFilePath.isEmpty() || !QFile::exists(m_strTmptFilePath) || !ui.groupBoxDirConfig->isEnabled())
 	{
@@ -486,14 +500,16 @@ void AutoPrinter::UpdateMaskConfigRange()
 	ui.horzSliderImgWidth->update();
 }
 
+// Combine the mask preview image for mask frame setting tab.
 QImage AutoPrinter::GetFramePreviewImage()
 {
 	QImage imgRet(m_imgTemplate.size(), QImage::Format_ARGB32_Premultiplied);
 
+	// Draw a blank mask on the template image for preview.
 	QPainter painterPre(&imgRet);
-	QBrush whiteBrush(Qt::white);
-	painterPre.drawImage(QPoint(0, 0), m_imgTemplate);
+	QBrush whiteBrush(QColor(255, 0, 0, 80));
 	QRect rect(m_FgMaskPos, m_FgMaskSize);
+	painterPre.drawImage(QPoint(0, 0), m_imgTemplate);
 	painterPre.fillRect(rect, whiteBrush);
 	painterPre.end();
 
@@ -564,6 +580,7 @@ void AutoPrinter::OnMaskCoordChangeYSB(int val)
 	UpdateMaskConfigRange();
 }
 
+// Iterate all files in Scan dir and move them to backup dir.
 void AutoPrinter::OnMonitorDirChange()
 {
 	QDir scanDir(m_strScanDir);
@@ -571,6 +588,7 @@ void AutoPrinter::OnMonitorDirChange()
 		return;
 
 	QFileInfoList fileInfoList = scanDir.entryInfoList(
+		g_strLstSupFormat,
 		QDir::Files|QDir::NoSymLinks|QDir::NoDotAndDotDot
 		|QDir::NoDot|QDir::NoDotDot);
 
@@ -581,36 +599,44 @@ void AutoPrinter::OnMonitorDirChange()
 		QString newPath = m_strBackupDir + "\\" + it->fileName();
 		QFile::rename(it->absoluteFilePath(), newPath);
 
+		// Put into pending process queue wait for combine thread to deal with.
 		QWriteLocker lock(&g_pndinProcFilesLock);
 		g_listPndinProcFiles.push_back(it->fileName());
 		g_listPndinProcFiles.removeDuplicates();
 
+		// Wake up combine thread once file ready.
 		g_conFileArrived.wakeAll();
 	}
 
 }
 
+// This combine function for output.
 void AutoPrinter::CombineImage( const QString &strInputImage )
 {
 	if (!QFile::exists(m_strTmptFilePath))
 	{
-		QMessageBox::warning(this, AutoPrinter::tr("Auto Printer"), AutoPrinter::tr("Please check your setting of template image path"));
+		QMessageBox::warning(this, AutoPrinter::tr("Auto Printer"), 
+			AutoPrinter::tr("Please check your setting of template image path"));
 		return;
 	}
 
 	QString strImgBackupPath = m_strBackupDir + "\\" + strInputImage;
-	QString strImgOutputPath = m_strOutputDir + "\\" + strInputImage;
+	int nIndex = strInputImage.indexOf(".");
+	QString strOutputImage = strInputImage.left(nIndex).append("_OUTPUT").append(strInputImage.right(nIndex - 1));
+	QString strImgOutputPath = m_strOutputDir + "\\" + strOutputImage;
 
+	// corresponding image not exist.
 	if (!QFile::exists(strImgBackupPath))
 		return;
 
 	QImage imgInput(strImgBackupPath);
 	QImage imgOutput(m_imgTemplate.size(), QImage::Format_ARGB32_Premultiplied);
 
+	// Draw the input image one the template, the scaled way may need to change.
 	QPainter outputPainter(&imgOutput);
-	outputPainter.drawImage(QPoint(0, 0), m_imgTemplate);
-	outputPainter.drawImage(m_FgMaskPos, imgInput.scaled(m_FgMaskSize, Qt::KeepAspectRatio, 
+	outputPainter.drawImage(m_FgMaskPos, imgInput.scaled(m_FgMaskSize, Qt::KeepAspectRatio, // TODO:
 		Qt::SmoothTransformation));
+	outputPainter.drawImage(QPoint(0, 0), m_imgTemplate);
 	outputPainter.end();
 
 	imgOutput.save(strImgOutputPath);
@@ -620,6 +646,8 @@ void AutoPrinter::CombineImage( const QString &strInputImage )
 
 void AutoPrinter::PrintImage( const QString &strImagePath )
 {
+	OnUpdatePrintingList();
+
 	QImage image(strImagePath);
 	QPainter painter;
 	painter.begin(m_pPrinter);
@@ -627,9 +655,67 @@ void AutoPrinter::PrintImage( const QString &strImagePath )
 	painter.end();
 }
 
-void AutoPrinter::InitPrinterSelectTab()
+void AutoPrinter::InitPrinterTab()
 {
-	// TODO:
+	// Initial.
+	ui.labPrintingObj->setText("");
+	ui.btnPrintCancel->setEnabled(false);
+	ui.btnPrintCancel->setVisible(false);
+	m_pPrintReviewWidget->setVisible(false);
+
+	// Update Printing list.
+	OnUpdatePrintingList();
+
+	// For setting up preview, preview button if is printing.
+	QStandardItemModel* model = static_cast<QStandardItemModel*>(ui.lstViewPrinters->model());
+	// Get the first item which should be the printing item.
+
+	if (model)
+	{
+		QStandardItem* item = model->item(0, 0);
+
+		if (item)
+		{
+			// Get printing image name.
+			QString strImage = item->text();
+			ui.labPrintingObj->setText(AutoPrinter::tr("Printing... ") + strImage);
+
+			// Set image to preview widget for displaying.
+			QImage image(strImage);
+			m_pPrintReviewWidget->SetDisplayImage(image);
+			m_pPrintReviewWidget->setVisible(true);
+
+			// Visable cancel button, but disable.
+			ui.btnPrintCancel->setVisible(true);
+			ui.btnPrintCancel->setEnabled(false);
+		}
+	}
+}
+
+void AutoPrinter::OnUpdatePrintingList()
+{
+	QStandardItemModel* model = new QStandardItemModel(ui.lstViewOutput);
+	{
+		QReadLocker locker(&g_pndinPrintFilesLock);
+		QStringList::iterator it;
+		int i = 0;
+		for (it = g_listPndinPrintFiles.begin(); it != g_listPndinPrintFiles.end(); ++it)
+		{
+			QStandardItem* item = new QStandardItem(*it);
+			item->setEditable(false);
+			model->setItem(i, item);
+
+			if (i == 0)
+			{
+				QColor txtColor = Qt::darkBlue;
+				QColor bgColor = Qt::green;
+				item->setData(txtColor, Qt::TextColorRole);
+				item->setData(bgColor, Qt::BackgroundRole);
+			}
+			++i;
+		}
+	}
+	ui.lstViewPrinters->setModel(model);
 }
 
 void AutoPrinter::OnCurrentChanged(int nIndex)
@@ -638,17 +724,17 @@ void AutoPrinter::OnCurrentChanged(int nIndex)
 	{
 	case TAB_INDEX_PRINTER:
 		{
-			InitPrinterSelectTab();
+			InitPrinterTab();
 		}
 		break;
 	case TAB_INDEX_OUTPUT:
 		{
-			InitCombineOutputTab();
+			InitOutputTab();
 		}
 		break;
 	case TAB_INDEX_FRAME:
 		{
-			InitTemplatePreviewTab();
+			InitPreviewTab();
 		}
 		break;
 	default:
@@ -691,6 +777,7 @@ void AutoPrinter::OnPrintCopy()
 	AddPendingPrintImage(filePath, ui.spBoxCopyNum->value(), true);	
 }
 
+// Iterate all image file in the ourput direcotry.
 void AutoPrinter::OnUpdateOutputList()
 {
 	if (!QFile::exists(m_strOutputDir))
@@ -701,6 +788,7 @@ void AutoPrinter::OnUpdateOutputList()
 		return;
 
 	QFileInfoList fileInfoList = outputDir.entryInfoList(
+		g_strLstSupFormat, 
 		QDir::Files|QDir::NoSymLinks|QDir::NoDotAndDotDot
 		|QDir::NoDot|QDir::NoDotDot);
 
@@ -717,23 +805,34 @@ void AutoPrinter::OnUpdateOutputList()
 	ui.lstViewOutput->setModel(model);
 }
 
-void AutoPrinter::InitCombineOutputTab()
+void AutoPrinter::InitOutputTab()
 {
+	// Initial.
+	// TODO:
+
+	// Update output list data.
 	OnUpdateOutputList();
+
 }
 
 void AutoPrinter::OnOuputItemSelected( const QModelIndex &index )
 {
+	// Get Select image name.
 	QString strSelectedImg = index.model()->data(index, Qt::DisplayRole).toString();
+
+	// Set search box text.
+	ui.lnEdtFileName->setText(strSelectedImg);
+
+	// Set preview image label.
 	ui.labOutputReview->setText(strSelectedImg);
 
+	// Set preview image.
 	QString strImgPath = m_strOutputDir + "\\" + strSelectedImg;
 	if (QFile::exists(strImgPath))
 	{
 		QImage image(strImgPath);
 		m_pOutputDispWidget->SetDisplayImage(image);
 	}
-	
 }
 
 void AutoPrinter::OnFindOutputFileName( const QString& string )
@@ -752,4 +851,76 @@ void AutoPrinter::InitialPrinter()
 		} 
 		delete dlg; 
 	}
+}
+
+bool AutoPrinter::eventFilter( QObject *obj, QEvent *event )
+{
+	if (obj == ui.lstViewPrinters) {
+		if (event->type() == QEvent::KeyPress) {
+			QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+			if (keyEvent->key() == Qt::Key_Delete)
+			{
+				OnCancelPrintItem();
+			}
+			return true;
+		} else {
+			return false;
+		}
+	} else {
+		// Pass the event on to the parent class.
+		return QMainWindow::eventFilter(obj, event);
+	}
+}
+
+void AutoPrinter::OnPrintingItemSelected( const QModelIndex &index )
+{
+	// Get Select image name.
+	QString strSelectedImg = index.model()->data(index, Qt::DisplayRole).toString();
+
+	bool bIndexPrinting = false;
+	if (0 == index.row())
+		bIndexPrinting = true;
+
+	QStandardItemModel* model = static_cast<QStandardItemModel*>(ui.lstViewPrinters->model());
+	if (model)
+	{
+		QStandardItem* item = model->item(0, 0);
+	}
+
+	// Set preview image.
+	if (QFile::exists(strSelectedImg))
+	{
+		QImage image(strSelectedImg);
+		m_pPrintReviewWidget->SetDisplayImage(image);
+		m_pPrintReviewWidget->setVisible(true);
+
+		if (bIndexPrinting)
+		{
+			ui.btnPrintCancel->setEnabled(false);
+			ui.btnPrintCancel->setVisible(true);
+			ui.labPrintingObj->setText(AutoPrinter::tr("Printing... ") + strSelectedImg);
+		}
+		else
+		{
+			ui.btnPrintCancel->setEnabled(true);
+			ui.btnPrintCancel->setVisible(true);
+			ui.labPrintingObj->setText(strSelectedImg);
+		}
+	}
+}
+
+void AutoPrinter::OnCancelPrintItem()
+{
+	QModelIndex currentIndex = ui.lstViewPrinters->currentIndex();
+	if (!currentIndex.isValid() || currentIndex.row() == 0)
+		return;
+
+	int index = currentIndex.row();
+	{
+		QWriteLocker locker(&g_pndinPrintFilesLock);
+		g_listPndinPrintFiles.removeAt(index);
+	}
+
+	OnUpdatePrintingList();	
+	update();
 }
