@@ -8,6 +8,8 @@
 #define SETTING_BACKUPPATH			"BackupPath"
 #define SETTING_CONFIG_MASK_COORD	"MaskCoord"
 #define SETTING_CONFIG_MASK_SIZE	"MaskSize"
+#define SETTING_CONFIG_PAPER_WIDTH	"PaperWidth"
+#define SETTING_CONFIG_PAPER_HEIGHT	"PaperHeight"
 
 #define TAB_INDEX_MAIN		0
 #define TAB_INDEX_FRAME		1
@@ -167,8 +169,9 @@ void PrinterThread::run()
 			strImagePath = g_listPndinPrintFiles.first();
 		}
 
-		sleep(600);
-		//m_pPhotoPrinter->PrintImage(strImagePath);
+		// Can't print in none gui thread?
+		// m_pPhotoPrinter->PrintImage(strImagePath);
+		emit PrintImage(strImagePath); // Print in main thread.
 
 		{	// Remove the first image nage from queue after printing.
 			QWriteLocker locker(&g_pndinPrintFilesLock);
@@ -212,6 +215,9 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	, m_pThreadCombine(NULL)
 	, m_pThreadPrint(NULL)
 	, m_pPrinter(NULL)
+	, m_nCompletedCount(0)
+	, m_bPaperWidth(0.0)
+	, m_bPaperHeight(0.0)
 {
 	QString strSetting = QApplication::applicationDirPath() + "/setting.ini";;
 	m_pSettings = new QSettings(strSetting, QSettings::IniFormat, this);
@@ -222,6 +228,8 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	m_strOutputDir = m_pSettings->value(SETTING_OUTPUTPATH).toString();
 	m_FgMaskPos = m_pSettings->value(SETTING_CONFIG_MASK_COORD).isNull() ? m_FgMaskPos : m_pSettings->value(SETTING_CONFIG_MASK_COORD).toPoint();
 	m_FgMaskSize = m_pSettings->value(SETTING_CONFIG_MASK_SIZE).isNull() ? m_FgMaskSize : m_pSettings->value(SETTING_CONFIG_MASK_SIZE).toSize();
+	m_bPaperWidth = m_pSettings->value(SETTING_CONFIG_PAPER_WIDTH).isNull() ? m_bPaperWidth : m_pSettings->value(SETTING_CONFIG_PAPER_WIDTH).toDouble();
+	m_bPaperHeight = m_pSettings->value(SETTING_CONFIG_PAPER_HEIGHT).isNull() ? m_bPaperHeight : m_pSettings->value(SETTING_CONFIG_PAPER_HEIGHT).toDouble();
 
 	ui.setupUi(this);
 	
@@ -265,17 +273,22 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	// Printing Review Tab's widget initial.
 	ui.btnPrintCancel->setEnabled(false);
 	ui.btnPrintCancel->setVisible(false);
+	ui.dspBoxPaperHeight->setValue(m_bPaperHeight);
+	ui.dspBoxPaperWidth->setValue(m_bPaperWidth);
 
 	ui.btnStop->setEnabled(false);
 
 	ui.spBoxCopyNum->setRange(1, 99);
 	ui.spBoxCopyNum->setValue(1);
 
-	ui.labCompletedCount->setText("0");
+	ui.labCompletedCount->setText(QString::number(m_nCompletedCount));
+	ui.labCompletedCount->setFont(QFont("Helvetica", 35, 10));
+	ui.label_5->setFont(QFont("Microsoft JhengHei", 20, 10));
 	ui.labOutputReview->setText("");
 
 	// Kick start the print thread first.
 	m_pThreadPrint = new PrinterThread(this);
+	connect(m_pThreadPrint, SIGNAL(PrintImage(const QString &)), this, SLOT(OnPrintImage(const QString &)));
 	m_pThreadPrint->start();
 
 	// Initial printers combobox.
@@ -327,6 +340,8 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	connect(ui.lstViewPrinters, SIGNAL(clicked(const QModelIndex &)), this, SLOT(OnPrintingItemSelected(const QModelIndex &)));
 	connect(ui.lstViewPrinters, SIGNAL(activated(const QModelIndex &)), this, SLOT(OnPrintingItemSelected(const QModelIndex &)));
 	connect(ui.btnPrintCancel, SIGNAL(pressed()), this, SLOT(OnCancelPrintItem()));
+	connect(ui.dspBoxPaperWidth, SIGNAL(valueChanged(double)), this, SLOT(OnPaperWidthChange(double)));
+	connect(ui.dspBoxPaperHeight, SIGNAL(valueChanged(double)), this, SLOT(OnPaperHeightChange(double)));
 }
 
 AutoPrinter::~AutoPrinter()
@@ -585,7 +600,9 @@ void AutoPrinter::OnMonitorDirChange()
 {
 	QDir scanDir(m_strScanDir);
 	if (scanDir.count() == 0)
+	{
 		return;
+	}
 
 	QFileInfoList fileInfoList = scanDir.entryInfoList(
 		g_strLstSupFormat,
@@ -597,7 +614,10 @@ void AutoPrinter::OnMonitorDirChange()
 	{
 		QFile file(it->absoluteFilePath());
 		QString newPath = m_strBackupDir + "\\" + it->fileName();
-		QFile::rename(it->absoluteFilePath(), newPath);
+		//bool bSuccess = QFile::rename(it->absoluteFilePath(), newPath);
+		::MoveFile(it->absoluteFilePath().toStdString().c_str(), newPath.toStdString().c_str());
+
+		Sleep(1000);
 
 		// Put into pending process queue wait for combine thread to deal with.
 		QWriteLocker lock(&g_pndinProcFilesLock);
@@ -615,8 +635,6 @@ void AutoPrinter::CombineImage( const QString &strInputImage )
 {
 	if (!QFile::exists(m_strTmptFilePath))
 	{
-		QMessageBox::warning(this, AutoPrinter::tr("Auto Printer"), 
-			AutoPrinter::tr("Please check your setting of template image path"));
 		return;
 	}
 
@@ -634,7 +652,7 @@ void AutoPrinter::CombineImage( const QString &strInputImage )
 
 	// Draw the input image one the template, the scaled way may need to change.
 	QPainter outputPainter(&imgOutput);
-	outputPainter.drawImage(m_FgMaskPos, imgInput.scaled(m_FgMaskSize, Qt::KeepAspectRatio, // TODO:
+	outputPainter.drawImage(m_FgMaskPos, imgInput.scaled(m_FgMaskSize, Qt::KeepAspectRatioByExpanding, // TODO:
 		Qt::SmoothTransformation));
 	outputPainter.drawImage(QPoint(0, 0), m_imgTemplate);
 	outputPainter.end();
@@ -644,15 +662,49 @@ void AutoPrinter::CombineImage( const QString &strInputImage )
 	AddPendingPrintImage(strImgOutputPath);
 }
 
-void AutoPrinter::PrintImage( const QString &strImagePath )
+void AutoPrinter::OnPrintImage( const QString &strImagePath )
 {
 	OnUpdatePrintingList();
 
 	QImage image(strImagePath);
-	QPainter painter;
+
+	// TODO: Add setting to configure printer parameters.
+	m_pPrinter->setFullPage(true);
+	if (ui.chkBoxLandscape->isChecked())
+	{
+		m_pPrinter->setOrientation(QPrinter::Landscape);
+		QSizeF paperSize(m_bPaperWidth, m_bPaperHeight);
+		m_pPrinter->setPaperSize(paperSize, QPrinter::Millimeter);
+	}
+	else
+	{
+		m_pPrinter->setOrientation(QPrinter::Portrait);
+		QSizeF paperSize(m_bPaperWidth, m_bPaperHeight);
+		m_pPrinter->setPaperSize(paperSize, QPrinter::Millimeter);
+	}
+
+	// TODO: Printer's painter way 1st:
+	//QPainter painter(m_pPrinter);
+	//QRect rect = painter.viewport();
+	//QSize size = image.size();
+	//size.scale(rect.size(), Qt::KeepAspectRatio);
+	//painter.setViewport(rect.x(), rect.y(),
+	//	size.width(), size.height());
+	//painter.setWindow(image.rect());
+	//painter.drawImage(0, 0, image);
+
+	// TODO: Printer's painter way 2nd:
+	QPainter painter(m_pPrinter);
 	painter.begin(m_pPrinter);
-	painter.drawImage(QPoint(0, 0), image);
+	painter.drawImage(QPoint(0, 0), image.scaled(rect.width(), rect.height(), Qt::KeepAspectRatio));
 	painter.end();
+
+
+	m_pPrinter->newPage();
+	m_nCompletedCount++;
+	ui.labCompletedCount->setText(QString::number(m_nCompletedCount));
+
+
 }
 
 void AutoPrinter::InitPrinterTab()
@@ -844,12 +896,13 @@ void AutoPrinter::InitialPrinter()
 {
 	if (m_pPrinter == NULL)
 	{
-		m_pPrinter = new QPrinter(QPrinter::HighResolution);
+		m_pPrinter = new QPrinter();
 		QPrintDialog* dlg = new QPrintDialog(m_pPrinter); 
 		if(dlg->exec() == QDialog::Accepted) { 
 
 		} 
 		delete dlg; 
+
 	}
 }
 
@@ -923,4 +976,16 @@ void AutoPrinter::OnCancelPrintItem()
 
 	OnUpdatePrintingList();	
 	update();
+}
+
+void AutoPrinter::OnPaperWidthChange( double dWidth )
+{
+	m_bPaperWidth = dWidth;
+	m_pSettings->setValue(SETTING_CONFIG_PAPER_WIDTH, dWidth);
+}
+
+void AutoPrinter::OnPaperHeightChange(double dHeight)
+{
+	m_bPaperHeight = dHeight;
+	m_pSettings->setValue(SETTING_CONFIG_PAPER_HEIGHT, dHeight);
 }

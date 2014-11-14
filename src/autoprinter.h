@@ -61,6 +61,9 @@ public:
 	PrinterThread(PhotoPrinterInterface* pPhotoPrinter);
 	virtual void run();
 
+signals:
+	void PrintImage(const QString &strImagePath);
+
 private:
 	bool m_bRun;
 	PhotoPrinterInterface* m_pPhotoPrinter;
@@ -92,7 +95,7 @@ public:
 	~AutoPrinter();
 
 	virtual void CombineImage(const QString &strInputImage);
-	virtual void PrintImage(const QString &strImagePath);
+	virtual void PrintImage(const QString &strImagePath){};
 
 protected:
 	bool eventFilter(QObject *obj, QEvent *event);
@@ -117,6 +120,7 @@ private slots:
 	void OnMonitorFolderStop();
 	void OnSaveSettings();
 	void OnPrintCopy();
+	void OnPrintImage(const QString &strImagePath);
 
 	// Settings.
 	void OnSelectScanDir();
@@ -149,6 +153,8 @@ private slots:
 	void OnUpdatePrintingList();
 	void OnPrintingItemSelected(const QModelIndex &index);
 	void OnCancelPrintItem();
+	void OnPaperWidthChange(double dWidth);
+	void OnPaperHeightChange(double dHeight);
 
 private:
 	Ui::AutoPrinterClass ui;
@@ -173,6 +179,10 @@ private:
 	QSettings*	m_pSettings;
 	QImage		m_imgTemplate;
 	QPrinter*	m_pPrinter;
+
+	int		m_nCompletedCount;
+	double	m_bPaperWidth;
+	double	m_bPaperHeight;
 };
 
 #endif // AUTOPRINTER_H

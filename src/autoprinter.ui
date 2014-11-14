@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>661</width>
-    <height>415</height>
+    <height>421</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -561,7 +561,7 @@
       </widget>
       <widget class="QWidget" name="tabOutput">
        <attribute name="title">
-        <string>Print Ouput</string>
+        <string>Print Output</string>
        </attribute>
        <layout class="QGridLayout" name="gridLayout_3">
         <item row="2" column="1">
@@ -793,6 +793,62 @@
        </attribute>
        <layout class="QGridLayout" name="gridLayout_5">
         <item row="2" column="1">
+         <widget class="QGroupBox" name="groupBox_4">
+          <property name="title">
+           <string>Orientation</string>
+          </property>
+          <layout class="QHBoxLayout" name="horizontalLayout_17">
+           <item>
+            <widget class="QCheckBox" name="chkBoxLandscape">
+             <property name="text">
+              <string>Landscape</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+             <attribute name="buttonGroup">
+              <string notr="true">buttonGroup</string>
+             </attribute>
+            </widget>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="chkBoxPortrait">
+             <property name="text">
+              <string>Portrait</string>
+             </property>
+             <property name="checked">
+              <bool>false</bool>
+             </property>
+             <attribute name="buttonGroup">
+              <string notr="true">buttonGroup</string>
+             </attribute>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <layout class="QHBoxLayout" name="horizontalLayout_15">
+          <property name="spacing">
+           <number>20</number>
+          </property>
+          <item>
+           <widget class="QDoubleSpinBox" name="dspBoxPaperWidth">
+            <property name="maximum">
+             <double>9999999.990000000223517</double>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QDoubleSpinBox" name="dspBoxPaperHeight">
+            <property name="maximum">
+             <double>999999999.990000009536743</double>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item row="4" column="1">
          <layout class="QVBoxLayout" name="verticalLayout_9">
           <item>
            <widget class="QGroupBox" name="groupBox_3">
@@ -839,6 +895,27 @@
           </item>
          </layout>
         </item>
+        <item row="0" column="1">
+         <layout class="QHBoxLayout" name="horizontalLayout_16">
+          <property name="spacing">
+           <number>20</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="label_16">
+            <property name="text">
+             <string>Paper Width:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="label_12">
+            <property name="text">
+             <string>Paper Height:</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
         <item row="0" column="0">
          <widget class="QLabel" name="label_15">
           <property name="text">
@@ -847,15 +924,32 @@
          </widget>
         </item>
         <item row="1" column="0">
-         <widget class="QComboBox" name="comboBoxPrinters"/>
+         <widget class="QComboBox" name="comboBoxPrinters">
+          <property name="enabled">
+           <bool>true</bool>
+          </property>
+         </widget>
         </item>
-        <item row="2" column="0">
+        <item row="4" column="0">
          <widget class="QListView" name="lstViewPrinters">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
             <horstretch>0</horstretch>
             <verstretch>0</verstretch>
            </sizepolicy>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_6">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="text">
+           <string>Task List:</string>
           </property>
          </widget>
         </item>
@@ -890,4 +984,7 @@
   <include location="../res/autoprinter.qrc"/>
  </resources>
  <connections/>
+ <buttongroups>
+  <buttongroup name="buttonGroup"/>
+ </buttongroups>
 </ui>
