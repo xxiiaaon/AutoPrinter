@@ -102,6 +102,7 @@ protected:
 
 private:
 	void SaveSettings();
+	void LoadSettings();
 	QImage GetFramePreviewImage();
 	void UpdateMaskConfigRange();
 	void InitialPrinter();
@@ -137,6 +138,17 @@ private slots:
 	void OnMaskCoordChangeY(int val);
 	void OnMaskCoordChangeXSB(int val); // For spinbox.
 	void OnMaskCoordChangeYSB(int val); // For spinbox.
+
+	// Water mark coordinate.
+	void OnWaterMarkEnable(int state);
+	void OnWaterMarkCoordChangeX(int val);
+	void OnWaterMarkCoordChangeY(int val);
+	void OnWaterMarkCoordChangeXSB(int val);
+	void OnWaterMarkCoordChangeYSB(int val);
+
+	// Frame setting tab's widget.
+	void OnChangeWaterMarkFont();
+	void OnChangeWaterMarkFontColor();
 
 	// Thread relatives.
 	void OnMonitorDirChange();
@@ -180,7 +192,12 @@ private:
 	QImage		m_imgTemplate;
 	QPrinter*	m_pPrinter;
 
+	QFont		m_waterMarkFont;
+	QColor		m_waterMarkColor;
+	QPoint		m_waterMarkPos; // Water Mark Position
+
 	int		m_nCompletedCount;
+	UINT	m_nTotolOutput;
 	double	m_bPaperWidth;
 	double	m_bPaperHeight;
 };

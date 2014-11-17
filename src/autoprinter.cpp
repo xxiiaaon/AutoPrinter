@@ -2,14 +2,22 @@
 #include <QtGui>
 
 //====================================================================================
-#define SETTING_TEMPLATEFILE		"TemplateFile"
-#define SETTING_SCANPATH			"ScanPath"
-#define SETTING_OUTPUTPATH			"OutputPath"
-#define SETTING_BACKUPPATH			"BackupPath"
-#define SETTING_CONFIG_MASK_COORD	"MaskCoord"
-#define SETTING_CONFIG_MASK_SIZE	"MaskSize"
-#define SETTING_CONFIG_PAPER_WIDTH	"PaperWidth"
-#define SETTING_CONFIG_PAPER_HEIGHT	"PaperHeight"
+#define SETTING_TOTAL_OUTPUT				"TotalOutput"
+#define SETTING_TEMPLATEFILE				"TemplateFile"
+#define SETTING_SCANPATH					"ScanPath"
+#define SETTING_OUTPUTPATH					"OutputPath"
+#define SETTING_BACKUPPATH					"BackupPath"
+#define SETTING_CONFIG_MASK_COORD			"MaskCoord"
+#define SETTING_CONFIG_MASK_SIZE			"MaskSize"
+#define SETTING_CONFIG_PAPER_WIDTH			"PaperWidth"
+#define SETTING_CONFIG_PAPER_HEIGHT			"PaperHeight"
+#define SETTING_CONFIG_WATERMARK_FONT		"WaterMarkFont"
+#define SETTING_CONFIG_WATERMARK_SIZE		"WaterMarkSize"
+#define SETTING_CONFIG_WATERMARK_COLOR		"WaterMarkColor"
+#define SETTING_CONFIG_WATERMARK_COORD		"WaterMarkCoord"
+#define SETTING_CONFIG_WATERMARK_ENABLE		"WaterMarkEnable"
+#define SETTING_CONFIG_OUTPUT_SUFFIX		"OutputSuffix"
+#define SETTING_CONFIG_OUTPUT_NAME_TYPE		"OutputNameType"
 
 #define TAB_INDEX_MAIN		0
 #define TAB_INDEX_FRAME		1
@@ -218,10 +226,16 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	, m_nCompletedCount(0)
 	, m_bPaperWidth(0.0)
 	, m_bPaperHeight(0.0)
+	, m_waterMarkFont(QFont("Microsoft JhengHei", 20, 10))
+	, m_waterMarkColor(QColor(Qt::black))
+	, m_nTotolOutput(0)
 {
+	ui.setupUi(this);
+
 	QString strSetting = QApplication::applicationDirPath() + "/setting.ini";;
 	m_pSettings = new QSettings(strSetting, QSettings::IniFormat, this);
 
+	// Retrive for setting.ini.
 	m_strTmptFilePath = m_pSettings->value(SETTING_TEMPLATEFILE).toString();
 	m_strScanDir = m_pSettings->value(SETTING_SCANPATH).toString();
 	m_strBackupDir = m_pSettings->value(SETTING_BACKUPPATH).toString();
@@ -230,9 +244,26 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	m_FgMaskSize = m_pSettings->value(SETTING_CONFIG_MASK_SIZE).isNull() ? m_FgMaskSize : m_pSettings->value(SETTING_CONFIG_MASK_SIZE).toSize();
 	m_bPaperWidth = m_pSettings->value(SETTING_CONFIG_PAPER_WIDTH).isNull() ? m_bPaperWidth : m_pSettings->value(SETTING_CONFIG_PAPER_WIDTH).toDouble();
 	m_bPaperHeight = m_pSettings->value(SETTING_CONFIG_PAPER_HEIGHT).isNull() ? m_bPaperHeight : m_pSettings->value(SETTING_CONFIG_PAPER_HEIGHT).toDouble();
+	if (!m_pSettings->value(SETTING_CONFIG_WATERMARK_FONT).isNull())
+		m_waterMarkFont.setFamily(m_pSettings->value(SETTING_CONFIG_WATERMARK_FONT).toString());
+	if (!m_pSettings->value(SETTING_CONFIG_WATERMARK_SIZE).isNull())
+		m_waterMarkFont.setPointSize(m_pSettings->value(SETTING_CONFIG_WATERMARK_SIZE).toInt());
+	if (!m_pSettings->value(SETTING_CONFIG_WATERMARK_COLOR).isNull())
+		m_waterMarkColor.setRgb(m_pSettings->value(SETTING_CONFIG_WATERMARK_COLOR).toInt());
+	if (!m_pSettings->value(SETTING_CONFIG_WATERMARK_COORD).isNull())
+		m_waterMarkPos = m_pSettings->value(SETTING_CONFIG_WATERMARK_COORD).toPoint();
+	if (!m_pSettings->value(SETTING_CONFIG_WATERMARK_ENABLE).isNull())
+	{
+		bool bWaterMarkEnable = m_pSettings->value(SETTING_CONFIG_WATERMARK_ENABLE).toBool();
+		ui.gpBoxWaterMarkSetting->setEnabled(bWaterMarkEnable);
+		ui.chkboxWaterMark->setChecked(bWaterMarkEnable);
+	}
+	if (!m_pSettings->value(SETTING_CONFIG_OUTPUT_SUFFIX).isNull())
+		ui.lnEditSuffix->setText(m_pSettings->value(SETTING_CONFIG_OUTPUT_SUFFIX).toString());
+	if (!m_pSettings->value(SETTING_TOTAL_OUTPUT).isNull())
+		m_nTotolOutput = m_pSettings->value(SETTING_TOTAL_OUTPUT).toUInt();
+			
 
-	ui.setupUi(this);
-	
 	// Print output tab's preview widget.
 	m_pOutputDispWidget = new AutoScaledDisplayWidget();
 	QVBoxLayout *pOutputLayout = new QVBoxLayout();
@@ -305,6 +336,9 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 
 	ui.lstViewPrinters->installEventFilter(this);
 
+	// Tab change.
+	connect(ui.tabWidget, SIGNAL(currentChanged(int)), this, SLOT(OnCurrentChanged(int)));
+
 	// Template File, Backup Dir, Output Dir, Scan Dir Path Select buttons.
 	connect(ui.btnSelectScanPath, SIGNAL(pressed()), this, SLOT(OnSelectScanDir()));
 	connect(ui.btnSelectBackupPath, SIGNAL(pressed()), this, SLOT(OnSelectBackupDir()));
@@ -327,8 +361,14 @@ AutoPrinter::AutoPrinter(QWidget *parent, Qt::WFlags flags)
 	connect(ui.dSpBoxMaskCoordX, SIGNAL(valueChanged(int)), this, SLOT(OnMaskCoordChangeXSB(int)));
 	connect(ui.dSpBoxMaskCoordY, SIGNAL(valueChanged(int)), this, SLOT(OnMaskCoordChangeYSB(int)));
 
-	// Tab change.
-	connect(ui.tabWidget, SIGNAL(currentChanged(int)), this, SLOT(OnCurrentChanged(int)));
+	// Frame Setting tab's widgets.
+	connect(ui.btnChangeWaterMarkFont, SIGNAL(pressed()), this, SLOT(OnChangeWaterMarkFont()));
+	connect(ui.btnChangeWaterMakeColor, SIGNAL(pressed()), this, SLOT(OnChangeWaterMarkFontColor()));
+	connect(ui.horzSliderWaterMarkCoordX, SIGNAL(valueChanged(int)), this, SLOT(OnWaterMarkCoordChangeX(int)));
+	connect(ui.horzSliderWaterMarkCoordY, SIGNAL(valueChanged(int)), this, SLOT(OnWaterMarkCoordChangeY(int)));
+	connect(ui.spBoxWaterMarkCoordX, SIGNAL(valueChanged(int)), this, SLOT(OnWaterMarkCoordChangeXSB(int)));
+	connect(ui.spBoxWaterMarkCoordY, SIGNAL(valueChanged(int)), this, SLOT(OnWaterMarkCoordChangeYSB(int)));
+	connect(ui.chkboxWaterMark, SIGNAL(stateChanged(int)), this, SLOT(OnWaterMarkEnable(int)));
 
 	// Output tab's widgets.
 	connect(ui.lstViewOutput, SIGNAL(clicked(const QModelIndex &)), this, SLOT(OnOuputItemSelected(const QModelIndex &)));
@@ -472,8 +512,19 @@ void AutoPrinter::OnMonitorFolderStop()
 
 void AutoPrinter::OnSaveSettings()
 {
+	// Configure.
+	m_pSettings->setValue(SETTING_CONFIG_OUTPUT_SUFFIX, ui.lnEditSuffix->text());
+
+	// Mask Coord and Size.
 	m_pSettings->setValue(SETTING_CONFIG_MASK_COORD, m_FgMaskPos);
 	m_pSettings->setValue(SETTING_CONFIG_MASK_SIZE, m_FgMaskSize);
+
+	// Water Mark.
+	m_pSettings->setValue(SETTING_CONFIG_WATERMARK_FONT, m_waterMarkFont.family());
+	m_pSettings->setValue(SETTING_CONFIG_WATERMARK_SIZE, m_waterMarkFont.pointSizeF());
+	m_pSettings->setValue(SETTING_CONFIG_WATERMARK_COLOR, m_waterMarkColor.rgb());
+	m_pSettings->setValue(SETTING_CONFIG_WATERMARK_ENABLE, ui.chkboxWaterMark->isChecked());
+	m_pSettings->setValue(SETTING_CONFIG_WATERMARK_COORD, m_waterMarkPos);
 }
 
 void AutoPrinter::InitPreviewTab()
@@ -491,6 +542,13 @@ void AutoPrinter::InitPreviewTab()
 	m_imgTemplate = QImage(m_strTmptFilePath);
 	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
 	UpdateMaskConfigRange();
+
+	// Update water mark coordinate range.
+	QSize size = m_imgTemplate.size();
+	ui.spBoxWaterMarkCoordX->setRange(0, size.width());
+	ui.spBoxWaterMarkCoordY->setRange(0, size.height());
+	ui.horzSliderWaterMarkCoordX->setRange(0, size.width());
+	ui.horzSliderWaterMarkCoordY->setRange(0, size.height());
 }
 
 void AutoPrinter::UpdateMaskConfigRange()
@@ -526,6 +584,12 @@ QImage AutoPrinter::GetFramePreviewImage()
 	QRect rect(m_FgMaskPos, m_FgMaskSize);
 	painterPre.drawImage(QPoint(0, 0), m_imgTemplate);
 	painterPre.fillRect(rect, whiteBrush);
+	if (ui.chkboxWaterMark->isChecked())
+	{
+		painterPre.setFont(m_waterMarkFont);
+		painterPre.setPen(QPen(m_waterMarkColor));
+		painterPre.drawText(m_waterMarkPos, "1234567890");
+	}
 	painterPre.end();
 
 	return imgRet;
@@ -595,6 +659,38 @@ void AutoPrinter::OnMaskCoordChangeYSB(int val)
 	UpdateMaskConfigRange();
 }
 
+void AutoPrinter::OnWaterMarkCoordChangeX( int val )
+{
+	m_waterMarkPos.setX(val);
+	ui.spBoxWaterMarkCoordX->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	ui.widgetFramePreview->update();
+}
+
+void AutoPrinter::OnWaterMarkCoordChangeY( int val )
+{
+	m_waterMarkPos.setY(val);
+	ui.spBoxWaterMarkCoordY->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	ui.widgetFramePreview->update();
+}
+
+void AutoPrinter::OnWaterMarkCoordChangeXSB( int val )
+{
+	m_waterMarkPos.setX(val);
+	ui.horzSliderWaterMarkCoordX->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	ui.widgetFramePreview->update();
+}
+
+void AutoPrinter::OnWaterMarkCoordChangeYSB( int val )
+{
+	m_waterMarkPos.setY(val);
+	ui.horzSliderWaterMarkCoordY->setValue(val);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	ui.widgetFramePreview->update();
+}
+
 // Iterate all files in Scan dir and move them to backup dir.
 void AutoPrinter::OnMonitorDirChange()
 {
@@ -615,7 +711,13 @@ void AutoPrinter::OnMonitorDirChange()
 		QFile file(it->absoluteFilePath());
 		QString newPath = m_strBackupDir + "\\" + it->fileName();
 		//bool bSuccess = QFile::rename(it->absoluteFilePath(), newPath);
-		::MoveFile(it->absoluteFilePath().toStdString().c_str(), newPath.toStdString().c_str());
+		bool bSuccess = ::MoveFile(it->absoluteFilePath().toStdString().c_str(), newPath.toStdString().c_str());
+
+		if (!bSuccess)
+		{
+			QMessageBox::warning(this, AutoPrinter::tr("Auto Printer"), AutoPrinter::tr("File \"%1\" is existed!").arg(it->absoluteFilePath()));
+			continue;
+		}
 
 		Sleep(1000);
 
@@ -639,11 +741,33 @@ void AutoPrinter::CombineImage( const QString &strInputImage )
 	}
 
 	QString strImgBackupPath = m_strBackupDir + "\\" + strInputImage;
+
+	// TODO: Configure output image name style.
+	// Directly adding suffix.
 	int nIndex = strInputImage.indexOf(".");
-	QString strOutputImage = strInputImage.left(nIndex).append("_OUTPUT").append(strInputImage.right(nIndex - 1));
+	QString strImgFormat = strInputImage.right(nIndex - 1);
+	QString strOutputImage;
+	QString strWaterMark;
+
+	if (ui.chkBoxNormalSuffix->isChecked())
+	{
+		QString strOutputImgName = strInputImage.left(nIndex).append(ui.lnEditSuffix->text());
+		strWaterMark = strOutputImgName;
+		strOutputImage = strOutputImgName + strImgFormat;
+	}
+	else
+	{
+		QString strGenNumber = QString("%1").arg(m_nTotolOutput, 10, 10, QChar('0'));
+		strWaterMark = strGenNumber;
+		strOutputImage = strGenNumber + strImgFormat;
+
+		m_nTotolOutput++;
+		m_pSettings->setValue(SETTING_TOTAL_OUTPUT, m_nTotolOutput);
+	}
+
 	QString strImgOutputPath = m_strOutputDir + "\\" + strOutputImage;
 
-	// corresponding image not exist.
+	// Corresponding backup image not exist.
 	if (!QFile::exists(strImgBackupPath))
 		return;
 
@@ -655,9 +779,22 @@ void AutoPrinter::CombineImage( const QString &strInputImage )
 	outputPainter.drawImage(m_FgMaskPos, imgInput.scaled(m_FgMaskSize, Qt::KeepAspectRatioByExpanding, // TODO:
 		Qt::SmoothTransformation));
 	outputPainter.drawImage(QPoint(0, 0), m_imgTemplate);
+	if (ui.chkboxWaterMark->isChecked())
+	{
+		outputPainter.setFont(m_waterMarkFont);
+		outputPainter.setPen(QPen(m_waterMarkColor));
+		outputPainter.drawText(m_waterMarkPos, strWaterMark);
+	}
+
+	// TODO: If need, add the watermark.
+
 	outputPainter.end();
 
-	imgOutput.save(strImgOutputPath);
+	if (!imgOutput.save(strImgOutputPath))
+	{
+		QMessageBox::warning(this, AutoPrinter::tr("Auto Printer"), AutoPrinter::tr("File \"%1\" is existed!").arg(strImgOutputPath));
+		return;
+	}
 
 	AddPendingPrintImage(strImgOutputPath);
 }
@@ -684,20 +821,21 @@ void AutoPrinter::OnPrintImage( const QString &strImagePath )
 	}
 
 	// TODO: Printer's painter way 1st:
-	//QPainter painter(m_pPrinter);
-	//QRect rect = painter.viewport();
-	//QSize size = image.size();
-	//size.scale(rect.size(), Qt::KeepAspectRatio);
-	//painter.setViewport(rect.x(), rect.y(),
-	//	size.width(), size.height());
-	//painter.setWindow(image.rect());
-	//painter.drawImage(0, 0, image);
+	QPainter painter(m_pPrinter);
+	QRect rect = painter.viewport();
+	QSize size = image.size();
+	size.scale(rect.size(), Qt::KeepAspectRatioByExpanding);
+	painter.setViewport(rect.x(), rect.y(),
+		size.width(), size.height());
+	painter.setWindow(image.rect());
+	painter.drawImage(0, 0, image);
 
 	// TODO: Printer's painter way 2nd:
-	QPainter painter(m_pPrinter);
-	painter.begin(m_pPrinter);
-	painter.drawImage(QPoint(0, 0), image.scaled(rect.width(), rect.height(), Qt::KeepAspectRatio));
-	painter.end();
+	//QPainter painter(m_pPrinter);
+	//QRect rect = painter.viewport();
+	//painter.begin(m_pPrinter);
+	//painter.drawImage(QPoint(0, 0), image.scaled(rect.width(), rect.height(), Qt::KeepAspectRatio));
+	//painter.end();
 
 
 	m_pPrinter->newPage();
@@ -988,4 +1126,39 @@ void AutoPrinter::OnPaperHeightChange(double dHeight)
 {
 	m_bPaperHeight = dHeight;
 	m_pSettings->setValue(SETTING_CONFIG_PAPER_HEIGHT, dHeight);
+}
+
+void AutoPrinter::OnChangeWaterMarkFont()
+{
+	QFontDialog fontDialog;
+	bool bRet;
+	m_waterMarkFont = fontDialog.getFont(&bRet, m_waterMarkFont, this);
+
+	if (bRet)
+	{
+		m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	}
+}
+
+void AutoPrinter::OnChangeWaterMarkFontColor()
+{
+	QColorDialog colorDialog;
+	m_waterMarkColor = colorDialog.getColor(m_waterMarkColor);
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+}
+
+void AutoPrinter::LoadSettings()
+{
+	// TODO:	
+}
+
+void AutoPrinter::OnWaterMarkEnable( int state )
+{
+	if (state == Qt::Checked)
+		ui.gpBoxWaterMarkSetting->setEnabled(true);
+	else
+		ui.gpBoxWaterMarkSetting->setEnabled(false);
+
+	m_pMaskReviewWidget->SetDisplayImage(GetFramePreviewImage());
+	m_pMaskReviewWidget->update();
 }
